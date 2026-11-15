@@ -1,7 +1,7 @@
 # Aret — Architecture & Technical Specification
 
 > Open-source, privacy-first, offline-first hiking & mountain companion.
-> Status: **Draft v0.1** · Date: 2026-11-15 · Audience: core team (2 developers)
+> Status: **Draft v0.2** · Date: 2026-11-15 · Decisions so far: ADR-0004, 0007, 0013, 0014 · Audience: core team (2 developers)
 
 ---
 
@@ -43,7 +43,7 @@
 
 ### Phase 0 — Foundations (weeks 1–3)
 - GitHub org, repos, project board, CI, issue templates, licenses.
-- Tile pipeline producing a **single region** (e.g. the Alps or your home region) as PMTiles.
+- Tile pipeline producing the **pilot region — Alpi Apuane + Appennino tosco-emiliano** (ADR-0014) as PMTiles.
 - Backend skeleton: `identity` + `tracks` services, Postgres/PostGIS, Docker Compose.
 
 ### Phase 1 — MVP "Record & keep" (≈ 2–3 months)
@@ -136,9 +136,9 @@ flowchart LR
 
 | Concern | Choice | Notes |
 |---|---|---|
-| UI | **SwiftUI** (iOS 17+) | Observation framework (`@Observable`). |
-| Map rendering | **MapLibre Native iOS** | Open source, vector tiles, custom styles, offline packs, hillshade. Apple MapKit cannot render your own vector tiles/offline regions well. |
-| Local DB | **GRDB.swift** (SQLite) | Full SQL control, migrations, built-in **R\*Tree** spatial index for bbox queries, WAL mode, observable queries. SwiftData is fine for simple models but weaker for large point series and spatial queries. If the existing prototype uses SwiftData, wrap persistence behind a protocol so it can be swapped. |
+| UI | **SwiftUI**, iOS 18+ / watchOS 11+, Swift 6 (ADR-0013) | Observation framework (`@Observable`). Project generated with XcodeGen from `project.yml`. |
+| Map rendering | **MapLibre Native iOS** | Open source, vector tiles, custom styles, offline packs, hillshade. Apple MapKit cannot render your own vector tiles/offline regions well. Decided in ADR-0004; the prototype's MapKit fallback stays until our offline maps are field-tested. |
+| Local DB | **GRDB.swift** (SQLite) | Full SQL control, migrations, built-in **R\*Tree** spatial index for bbox queries, WAL mode, observable queries. SwiftData is fine for simple models but weaker for large point series and spatial queries. Decided in ADR-0007: replaces the prototype's JSON/GPX files; schema kept as plain `.sql` migrations so a future Android app (Room/SQLDelight) can reuse it. |
 | Networking | `URLSession` + **swift-openapi-generator** | Client generated from the backend's OpenAPI spec → no hand-written DTOs. |
 | Secrets | **Keychain** | Refresh token, never in UserDefaults. |
 | Background work | `BGTaskScheduler`, background URLSession | Uploads continue when the app is suspended. |
@@ -208,7 +208,7 @@ flowchart LR
 | Style | MapLibre style JSON in `aret-maps/styles` | Your own "outdoor" look: trails colored by difficulty, contours, hillshade. |
 | Refresh | Weekly/monthly GitHub Action or cron on the VM | Rebuild from fresh OSM extract. |
 
-Start with **one region** (an Alps extract is a few GB of tiles) to stay in free storage tiers; expand later.
+Start with the **pilot region: Alpi Apuane + Appennino tosco-emiliano** (ADR-0014), small enough for free storage tiers; expand later.
 
 ### 5.2 Routing engine
 
@@ -611,17 +611,17 @@ One **organization-level GitHub Project** ("Aret Roadmap") collects issues from 
 | 0001 | Backend language | Rust (axum, sqlx) | Proposed |
 | 0002 | Database | PostgreSQL + PostGIS | Proposed |
 | 0003 | Service granularity | Cargo workspace monorepo; start with identity + tracks + worker | Proposed |
-| 0004 | Map rendering on iOS | MapLibre Native | Proposed |
+| 0004 | Map rendering on iOS | MapLibre Native, MapKit fallback until offline maps are tested | **Accepted** |
 | 0005 | Tile format & hosting | PMTiles on R2 + CDN, Planetiler custom outdoor profile | Proposed |
 | 0006 | Routing engine | Valhalla | Proposed |
-| 0007 | iOS persistence | GRDB (check fit with existing prototype) | **Needs review of prototype** |
+| 0007 | iOS persistence | GRDB, schema as plain SQL migrations | **Accepted** |
 | 0008 | Auth | Own identity-svc (Argon2id, EdDSA JWT, rotating refresh) + Sign in with Apple; *alternative: self-host Zitadel/Ory Kratos* | Proposed |
 | 0009 | Event bus | NATS JetStream | Proposed |
 | 0010 | Orchestration | Compose → k3s + CloudNativePG | Proposed |
 | 0011 | Licenses | AGPL-3.0 backend, MPL-2.0 iOS, DCO | Proposed |
 | 0012 | Hosting region | EU (GDPR) | Proposed |
-| 0013 | Minimum iOS version | iOS 17 (modern CoreLocation APIs) | Proposed |
-| 0014 | First map region | e.g. Alps / home region | Open |
+| 0013 | Minimum iOS version | iOS 18 / watchOS 11 (as in the prototype) | **Accepted** |
+| 0014 | First map region | Alpi Apuane + Appennino tosco-emiliano | **Accepted** |
 
 ### Immediate next steps
 1. Review this document together; turn each row above into an ADR (accept / change).
