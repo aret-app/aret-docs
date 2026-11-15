@@ -1,7 +1,7 @@
 # Aret — Architecture & Technical Specification
 
 > Open-source, privacy-first, offline-first hiking & mountain companion.
-> Status: **Draft v0.2** · Date: 2026-11-15 · Decisions so far: ADR-0001–0005, 0007, 0008, 0011, 0013, 0014 · Audience: core team (2 developers)
+> Status: **Draft v0.2** · Date: 2026-11-15 · Decisions so far: ADR-0001–0005, 0007–0009, 0011, 0013, 0014 · Audience: core team (2 developers)
 
 ---
 
@@ -597,7 +597,7 @@ One **organization-level GitHub Project** ("Aret Roadmap") collects issues from 
 | 0006 | Routing engine | Valhalla | Proposed |
 | 0007 | iOS persistence | GRDB, schema as plain SQL migrations | **Accepted** |
 | 0008 | Auth | **Self-hosted Ory Kratos** + thin Rust `identity-svc` adapter | **Accepted** |
-| 0009 | Event bus | NATS JetStream | Proposed |
+| 0009 | Event bus | NATS JetStream | **Accepted** |
 | 0010 | Orchestration | Compose → k3s + CloudNativePG | Proposed |
 | 0011 | Licenses | AGPL-3.0 backend, MPL-2.0 iOS, DCO | **Accepted** |
 | 0012 | Hosting region | EU (GDPR) | Proposed |
