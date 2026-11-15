@@ -1,7 +1,7 @@
 # Aret — Architecture & Technical Specification
 
 > Open-source, privacy-first, offline-first hiking & mountain companion.
-> Status: **Draft v0.2** · Date: 2026-11-15 · Decisions so far: ADR-0004, 0007, 0013, 0014 · Audience: core team (2 developers)
+> Status: **Draft v0.2** · Date: 2026-11-15 · Decisions so far: ADR-0004, 0005, 0007, 0013, 0014 · Audience: core team (2 developers)
 
 ---
 
@@ -203,7 +203,7 @@ flowchart LR
 | Piece | Tool | Why |
 |---|---|---|
 | Vector tiles | **Planetiler** (Java, very fast) with a custom **outdoor profile** | Standard schemas (OpenMapTiles) drop most hiking attributes. A custom layer keeps `sac_scale`, `trail_visibility`, `surface`, hiking route relations (`route=hiking`, `network=iwn/nwn/rwn/lwn`), huts, springs, peaks, saddles, shelters. |
-| Tile format | **PMTiles** | One file per layer, served by plain HTTP range requests from object storage. No tile server to run. |
+| Tile format | **Folder of vector tiles (`z/x/y.pbf`)** on **Cloudflare Pages** (ADR-0005) | Static files on a free global CDN, no card, no tile server. Pages allows 20,000 files of ≤ 25 MB each, enough for the pilot region. Later, for larger regions: one **PMTiles** file per layer on R2/S3, served with HTTP range requests. |
 | Elevation | **Copernicus DEM GLO-30** (30 m, free) | Hillshade, contour lines, elevation profiles, correction of GPS altitude. |
 | Style | MapLibre style JSON in `aret-maps/styles` | Your own "outdoor" look: trails colored by difficulty, contours, hillshade. |
 | Refresh | Weekly/monthly GitHub Action or cron on the VM | Rebuild from fresh OSM extract. |
@@ -612,7 +612,7 @@ One **organization-level GitHub Project** ("Aret Roadmap") collects issues from 
 | 0002 | Database | PostgreSQL + PostGIS | Proposed |
 | 0003 | Service granularity | Cargo workspace monorepo; start with identity + tracks + worker | Proposed |
 | 0004 | Map rendering on iOS | MapLibre Native, MapKit fallback until offline maps are tested | **Accepted** |
-| 0005 | Tile format & hosting | PMTiles on R2 + CDN, Planetiler custom outdoor profile | Proposed |
+| 0005 | Tile format & hosting | XYZ tile folder on Cloudflare Pages (no card); PMTiles on R2 when we outgrow it | **Accepted** |
 | 0006 | Routing engine | Valhalla | Proposed |
 | 0007 | iOS persistence | GRDB, schema as plain SQL migrations | **Accepted** |
 | 0008 | Auth | Own identity-svc (Argon2id, EdDSA JWT, rotating refresh) + Sign in with Apple; *alternative: self-host Zitadel/Ory Kratos* | Proposed |
