@@ -1,7 +1,7 @@
 # Aret — Architecture & Technical Specification
 
 > Open-source, privacy-first, offline-first hiking & mountain companion.
-> Status: **Draft v0.2** · Date: 2026-11-15 · Decisions so far: ADR-0004, 0005, 0007, 0013, 0014 · Audience: core team (2 developers)
+> Status: **Draft v0.2** · Date: 2026-11-15 · Decisions so far: ADR-0001–0005, 0007, 0011, 0013, 0014 · Audience: core team (2 developers)
 
 ---
 
@@ -608,9 +608,9 @@ One **organization-level GitHub Project** ("Aret Roadmap") collects issues from 
 
 | # | Decision | Recommendation in this spec | Status |
 |---|---|---|---|
-| 0001 | Backend language | Rust (axum, sqlx) | Proposed |
-| 0002 | Database | PostgreSQL + PostGIS | Proposed |
-| 0003 | Service granularity | Cargo workspace monorepo; start with identity + tracks + worker | Proposed |
+| 0001 | Backend language | Rust (axum, sqlx) | **Accepted** |
+| 0002 | Database | PostgreSQL + PostGIS | **Accepted** |
+| 0003 | Service granularity | Cargo workspace monorepo; start with identity + tracks + worker | **Accepted** |
 | 0004 | Map rendering on iOS | MapLibre Native, MapKit fallback until offline maps are tested | **Accepted** |
 | 0005 | Tile format & hosting | XYZ tile folder on Cloudflare Pages (no card); PMTiles on R2 when we outgrow it | **Accepted** |
 | 0006 | Routing engine | Valhalla | Proposed |
@@ -618,7 +618,7 @@ One **organization-level GitHub Project** ("Aret Roadmap") collects issues from 
 | 0008 | Auth | Own identity-svc (Argon2id, EdDSA JWT, rotating refresh) + Sign in with Apple; *alternative: self-host Zitadel/Ory Kratos* | Proposed |
 | 0009 | Event bus | NATS JetStream | Proposed |
 | 0010 | Orchestration | Compose → k3s + CloudNativePG | Proposed |
-| 0011 | Licenses | AGPL-3.0 backend, MPL-2.0 iOS, DCO | Proposed |
+| 0011 | Licenses | AGPL-3.0 backend, MPL-2.0 iOS, DCO | **Accepted** |
 | 0012 | Hosting region | EU (GDPR) | Proposed |
 | 0013 | Minimum iOS version | iOS 18 / watchOS 11 (as in the prototype) | **Accepted** |
 | 0014 | First map region | Alpi Apuane + Appennino tosco-emiliano | **Accepted** |
