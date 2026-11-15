@@ -1,7 +1,7 @@
 # Aret — Architecture & Technical Specification
 
 > Open-source, privacy-first, offline-first hiking & mountain companion.
-> Status: **Draft v0.2** · Date: 2026-11-15 · Decisions so far: ADR-0001–0005, 0007, 0011, 0013, 0014 · Audience: core team (2 developers)
+> Status: **Draft v0.2** · Date: 2026-11-15 · Decisions so far: ADR-0001–0005, 0007, 0008, 0011, 0013, 0014 · Audience: core team (2 developers)
 
 ---
 
@@ -44,7 +44,7 @@
 ### Phase 0 — Foundations (weeks 1–3)
 - GitHub org, repos, project board, CI, issue templates, licenses.
 - Tile pipeline producing the **pilot region — Alpi Apuane + Appennino tosco-emiliano** (ADR-0014) as PMTiles.
-- Backend skeleton: `identity` + `tracks` services, Postgres/PostGIS, Docker Compose.
+- Backend skeleton: Ory Kratos + `identity` adapter + `tracks` service, Postgres/PostGIS, Docker Compose.
 
 ### Phase 1 — MVP "Record & keep" (≈ 2–3 months)
 - iOS: map view (online + downloaded region), GPS recording with background mode, barometric elevation, live stats (distance, ascent/descent, time, pace), auto-pause.
@@ -94,7 +94,7 @@ flowchart LR
 
   subgraph Backend["🦀 Backend (Docker)"]
     GW[API gateway<br/>Traefik · TLS · rate limit]
-    ID[identity-svc]
+    ID[identity-svc<br/>+ Ory Kratos]
     TR[tracks-svc<br/>+ sync]
     PL[planner-svc]
     PO[places-svc]
@@ -125,7 +125,7 @@ flowchart LR
 | Record hike | Device only | real time, no network |
 | Sync track | App → Gateway → tracks-svc → Postgres (+ event) | async, background |
 | Plan route | App → Gateway → planner-svc → Valhalla | < 500 ms p95 |
-| Login / refresh | App → Gateway → identity-svc | < 200 ms p95 |
+| Login / refresh | App → Gateway → Ory Kratos | < 200 ms p95 |
 | Every other authenticated call | JWT verified **locally** in each service (no auth round-trip) | +< 1 ms |
 
 ---
@@ -251,7 +251,7 @@ Don't write a routing engine in Rust — run a proven one as a container behind 
 
 | Service | Phase | Responsibility | Owns (Postgres schema) | Publishes events |
 |---|---|---|---|---|
-| **identity-svc** | 1 | Sign-up, login, Sign in with Apple, token issue/refresh/revoke, email verification, password reset, account deletion, JWKS endpoint | `identity` | `user.created`, `user.deleted` |
+| **Ory Kratos** + **identity-svc** | 1 | **Kratos** (self-hosted, ADR-0008): sign-up, login, Sign in with Apple, passkeys, sessions, email verification, recovery. **identity-svc** is a thin Rust adapter: turns Kratos webhooks into events, runs account deletion (Kratos admin API + `user.deleted`) | `kratos` DB (owned by Kratos) | `user.created`, `user.deleted` |
 | **tracks-svc** | 1 | Upload/download tracks, stats, sync endpoints (push/pull), GPX import/export, privacy zones | `tracks` | `track.created`, `track.updated`, `track.deleted` |
 | planner-svc | 2 | Route planning (proxy + enrichment of Valhalla), saved tours, elevation profile, time estimate | `planner` | `tour.created` |
 | places-svc | 2 | POI search (huts, peaks, water), geocoding of mountain names (from OSM import) | `places` | — |
@@ -260,7 +260,7 @@ Don't write a routing engine in Rust — run a proven one as a container behind 
 | live-svc | 3 | Live location sharing over WebSocket for safety contacts | Valkey (ephemeral) | — |
 | worker | 1+ | Async jobs consuming events: DEM elevation correction, stats recomputation, GDPR purge, emails | — | — |
 
-**Gateway:** **Traefik** (or Caddy) — TLS via Let's Encrypt, path routing (`/v1/auth/*` → identity, `/v1/tracks/*` → tracks…), rate limiting, request size limits. No custom Rust gateway needed.
+**Gateway:** **Traefik** (or Caddy) — TLS via Let's Encrypt, path routing (`/v1/auth/*` → Kratos public API, `/v1/tracks/*` → tracks…), rate limiting, request size limits. No custom Rust gateway needed.
 
 ### 6.3 API conventions
 - REST + JSON, versioned under `/v1`. OpenAPI 3.1 published per service, merged in CI.
@@ -287,7 +287,7 @@ sequenceDiagram
   ME->>ME: purge photos
   TR-->>NATS: purge.completed(tracks)
   ME-->>NATS: purge.completed(media)
-  ID->>ID: hard-delete identity row after all acks (≤ 30 days)
+  ID->>ID: delete the identity via Kratos admin API after all acks (≤ 30 days)
 ```
 
 Events use the **transactional outbox pattern** in each service (write event to an `outbox` table in the same DB transaction, a relay publishes to NATS) so no event is lost if a service crashes.
@@ -315,32 +315,13 @@ What you do **not** need at the start: MongoDB, a dedicated time-series DB, Elas
 ### 7.2 Core schema sketch
 
 ```sql
--- identity schema
-CREATE TABLE identity.users (
-  id              uuid PRIMARY KEY,               -- UUIDv7
-  email_enc       bytea NOT NULL,                 -- encrypted (AES-256-GCM, envelope key)
-  email_hash      bytea NOT NULL UNIQUE,          -- HMAC-SHA256 blind index for lookup
-  password_hash   text,                           -- Argon2id PHC string; NULL for Apple-only users
-  apple_sub       text UNIQUE,
-  email_verified  boolean NOT NULL DEFAULT false,
-  created_at      timestamptz NOT NULL DEFAULT now(),
-  deleted_at      timestamptz
-);
-
-CREATE TABLE identity.refresh_tokens (
-  id          uuid PRIMARY KEY,
-  user_id     uuid NOT NULL REFERENCES identity.users(id),
-  family_id   uuid NOT NULL,                      -- rotation family for reuse detection
-  token_hash  bytea NOT NULL UNIQUE,              -- SHA-256 of opaque token, never the token
-  device_name text,
-  expires_at  timestamptz NOT NULL,
-  revoked_at  timestamptz
-);
+-- identities (email, password hashes, Apple links, sessions) live in Kratos's own
+-- database `kratos` (ADR-0008); our services only store the Kratos identity id.
 
 -- tracks schema
 CREATE TABLE tracks.tracks (
   id              uuid PRIMARY KEY,               -- generated on device
-  owner_id        uuid NOT NULL,                  -- no cross-schema FK (service boundary)
+  owner_id        uuid NOT NULL,                  -- Kratos identity id; no cross-service FK
   title           text,
   sport           text NOT NULL DEFAULT 'hike',
   visibility      text NOT NULL DEFAULT 'private' CHECK (visibility IN ('private','unlisted','followers','public')),
@@ -414,29 +395,29 @@ Rules:
 
 ## 9. Authentication & security
 
-### 9.1 Token model
+### 9.1 Identity server: self-hosted Ory Kratos (ADR-0008)
+We don't write login code ourselves. **Ory Kratos** (Apache-2.0, open source, self-hosted, €0) runs as a container with its own database `kratos` on our Postgres server. It provides registration, login, **Sign in with Apple**, **passkeys**, TOTP two-factor, email verification, account recovery and session management through its API for native apps.
 
-| Token | Format | Lifetime | Storage on device |
-|---|---|---|---|
-| Access token | **JWT signed with Ed25519 (EdDSA)**; claims: `sub`, `exp`, `iat`, `jti`, `scope` | 15 min | memory |
-| Refresh token | Opaque random 256-bit, stored **hashed** on server | 30 days, **rotated** on every use | Keychain (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`) |
+| Piece | How it works | Storage on device |
+|---|---|---|
+| Kratos session token | Issued by Kratos after login in the native-app flow | Keychain (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`) |
+| Short-lived JWT for our services | Kratos's session tokenizer turns the session into a signed JWT (a few minutes); services verify it **locally** with Kratos's public keys (JWKS), so no per-request call to Kratos. *Verify the feature in the Kratos version we deploy; fallback: call `/sessions/whoami` and cache the result in Valkey for ~60 s.* | memory |
 
-- Services verify JWTs **locally** using the public keys from identity-svc's JWKS endpoint (cached) → no per-request call to identity → fast.
-- **Refresh token rotation with reuse detection:** if an old refresh token is reused, revoke the whole family (stolen token).
-- Key rotation: `kid` header, two active keys during rotation.
-- Revocation of access tokens is implicit by short TTL; for "log out everywhere" add a `tokens_valid_after` timestamp per user, cached in Valkey.
+- "Log out everywhere" and session revocation: Kratos admin API; JWT lifetime short enough that revocation applies within minutes.
+- Our shared `aret-auth` crate implements the JWT check (and the whoami fallback) once for all services.
 
-### 9.2 Credentials
-- Passwords: **Argon2id** (OWASP baseline: m = 19 MiB, t = 2, p = 1; tune upwards on your hardware), per-user salt (built into PHC string), optional server-side **pepper** from secrets.
-- Rate limit login and reset endpoints (per IP + per account), generic error messages (no user enumeration).
-- **Sign in with Apple** from Phase 1: frictionless on iOS, and App Store guidelines require it if you ever add other third-party logins.
-- **Passkeys (WebAuthn)** in Phase 2–3 — excellent on iOS, removes password risk entirely.
-- Email verification and password-reset tokens: single-use, short-lived, stored hashed.
+### 9.2 Credentials and hardening (configured in Kratos)
+- Password hashing **Argon2id** or bcrypt as configured in Kratos (choose Argon2id, tuned to our hardware); breached-password check (HaveIBeenPwned k-anonymity) enabled.
+- **Sign in with Apple** from Phase 1 (App Store guidelines require it if other third-party logins are added).
+- **Passkeys** enabled as soon as the iOS flow is ready — removes password risk for those users.
+- Rate limiting on Kratos public endpoints at the gateway; generic error messages (no user enumeration).
+- Kratos's courier sends verification/recovery emails via SMTP (free tier of a transactional email provider).
+- Keep Kratos up to date: subscribe to its security advisories; Dependabot/Renovate on the image tag.
 
 ### 9.3 Data protection
 - **In transit:** TLS 1.3 everywhere (Let's Encrypt at the gateway); mTLS or a private network between services when on multiple hosts. iOS App Transport Security enforced.
 - **At rest:** encrypted disks/volumes; encrypted backups (WAL-G/pgBackRest with encryption); object storage server-side encryption.
-- **Field-level:** sensitive fields (email, privacy-zone centers) encrypted with AES-256-GCM using **envelope encryption** (data key encrypted by a master key); email lookup via an HMAC blind index.
+- **Field-level:** sensitive fields in our own services (e.g. privacy-zone centers) encrypted with AES-256-GCM using **envelope encryption**. Emails live in Kratos's database, protected by encrypted volumes and encrypted backups.
 - **Secrets:** SOPS + age in the infra repo at the start; OpenBao/Vault or cloud KMS later. Never in images or git plaintext.
 - **On device:** iOS Data Protection (`completeUntilFirstUserAuthentication`) for the SQLite file.
 - **Supply chain:** Dependabot, `cargo-deny`, CodeQL, signed container images (cosign), minimal images (`distroless` or `scratch` with musl).
@@ -536,12 +517,12 @@ aret-backend/
 ├── Cargo.toml              # [workspace]
 ├── crates/
 │   ├── aret-common/        # config, errors (problem+json), telemetry, db pool
-│   ├── aret-auth/          # JWT verification middleware, JWKS cache, claims
+│   ├── aret-auth/          # Kratos JWT verification (JWKS cache) + whoami fallback, claims
 │   ├── aret-geo/           # GPX parse/write, simplification, stats, elevation smoothing
 │   ├── aret-events/        # event schemas + outbox relay
-│   └── aret-crypto/        # envelope encryption, blind index
+│   └── aret-crypto/        # envelope encryption for sensitive fields
 ├── services/
-│   ├── identity/           # src/, migrations/, Dockerfile
+│   ├── identity/           # thin adapter for Ory Kratos: webhooks → events, account deletion
 │   ├── tracks/
 │   ├── planner/
 │   ├── places/
@@ -615,7 +596,7 @@ One **organization-level GitHub Project** ("Aret Roadmap") collects issues from 
 | 0005 | Tile format & hosting | XYZ tile folder on Cloudflare Pages (no card); PMTiles on R2 when we outgrow it | **Accepted** |
 | 0006 | Routing engine | Valhalla | Proposed |
 | 0007 | iOS persistence | GRDB, schema as plain SQL migrations | **Accepted** |
-| 0008 | Auth | Own identity-svc (Argon2id, EdDSA JWT, rotating refresh) + Sign in with Apple; *alternative: self-host Zitadel/Ory Kratos* | Proposed |
+| 0008 | Auth | **Self-hosted Ory Kratos** + thin Rust `identity-svc` adapter | **Accepted** |
 | 0009 | Event bus | NATS JetStream | Proposed |
 | 0010 | Orchestration | Compose → k3s + CloudNativePG | Proposed |
 | 0011 | Licenses | AGPL-3.0 backend, MPL-2.0 iOS, DCO | **Accepted** |
@@ -628,4 +609,4 @@ One **organization-level GitHub Project** ("Aret Roadmap") collects issues from 
 2. Create the GitHub org, `.github` repo, project board and labels.
 3. Audit the existing iOS prototype against §4 (persistence, map SDK, module structure).
 4. Build the first PMTiles region and render it in the prototype with MapLibre — the riskiest, most visible piece; do it first.
-5. Backend skeleton: `identity` + `tracks` with Compose, OpenAPI → Swift client generation end-to-end.
+5. Backend skeleton: Kratos + `identity` adapter + `tracks` with Compose, OpenAPI → Swift client generation end-to-end.
