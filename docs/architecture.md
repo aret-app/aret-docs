@@ -626,7 +626,7 @@ pitfalls already solved. Keep it current when you change any of it.*
 | `aret-ios` | Prototype imported (aret-app/aret-ios#3) | SwiftUI, iOS 18 / watchOS 11, Swift 6, XcodeGen (`project.yml`), MapLibre + MapKit fallback, Apple Watch app, Live Activity. Storage still JSON + GPX files (GRDB migration: aret-app/aret-ios#6). Known P0 bugs: aret-app/aret-ios#4 (track lost if killed mid-recording), aret-app/aret-ios#5 (`FileProtectionType.complete` blocks saving while locked). Pilot area boxes in `ARET-iOS/Routes/ARETDiscoveryRegion.swift`. |
 | `aret-backend` | Workspace + local stack | Cargo workspace, Rust **1.100.0** pinned. Crates `aret-common` (config from env, RFC 9457 errors, logging, `/health`, graceful shutdown) and `aret-auth` (`AuthenticatedUser` extractor; **rejects every token** until Kratos JWT verification, aret-app/aret-backend#3). Services `aret-identity` (8081) and `aret-tracks` (8082). Dockerfile: static musl binary on `distroless/static-debian12:nonroot` (~9 MB). `compose.yaml`: full local stack. |
 | `aret-maps` | Pilot tiles live | Planetiler 0.10.2, OpenMapTiles schema, bbox `9.29,43.79,11.38,44.80`, z0–14 (8,430 tiles). Served at `https://aret-tiles.pages.dev/tiles/{z}/{x}/{y}.pbf`; `metadata.json` alongside. Scripts: `scripts/build-pilot.sh`, `scripts/deploy-pages.sh` (Wrangler 4.162.0 pinned). |
-| `aret-infra` | Empty | CI workflows (aret-app/aret-infra#1) are next. |
+| `aret-infra` | Shared CI workflows (aret-app/aret-infra#3) | Reusable `rust-ci.yml` (fmt, clippy `-D warnings`, test, cargo-deny) and `container-image.yml` (native amd64 + arm64 builds on `ubuntu-24.04` / `ubuntu-24.04-arm`; on `main` publishes multi-arch images to `ghcr.io/aret-app/<service>`). Callers: `aret-backend/.github/workflows/ci.yml` (aret-app/aret-backend#9). Still to do (aret-app/aret-infra#1): required checks in rulesets, iOS build workflow, automated tile deploys. |
 | `aret-docs` | This spec + ADRs | `docs/adr/` holds accepted decisions; open ones are issues. |
 
 ### Conventions
@@ -646,4 +646,5 @@ pitfalls already solved. Keep it current when you change any of it.*
 | Cloudflare Pages: 20,000 files / 25 MB per file; `_headers` applies **every** matching rule | z14 max for the pilot (z15 would exceed); tile rule uses `/tiles/:z/:x/:y` so it doesn't also match `metadata.json` |
 | Clippy `double_must_use` | Don't put `#[must_use]` on functions returning an already-`#[must_use]` type (e.g. axum `Router`) |
 | Docker on macOS | Colima + Homebrew `docker`, `docker-buildx`, `docker-compose`; `~/.docker/config.json` needs `cliPluginsExtraDirs: ["/opt/homebrew/lib/docker/cli-plugins"]` |
+| aret-ios history | The prototype import (aret-app/aret-ios#3) was squash-merged; the full 232-commit history is kept by the tag `prototype-history`. Integration branch is **`main`**; `feature/field-test-0.1` (the old repo's base) has fixes not yet in `main` (aret-app/aret-ios#4, #5). |
 
