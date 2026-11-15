@@ -1,7 +1,7 @@
 # Aret — Architecture & Technical Specification
 
 > Open-source, privacy-first, offline-first hiking & mountain companion.
-> Status: **Draft v0.2** · Date: 2026-11-15 · Decisions so far: ADR-0001–0005, 0007–0009, 0011, 0013, 0014 · Audience: core team (2 developers)
+> Status: **Draft v0.3** · Date: 2026-11-15 · Decisions so far: ADR-0001–0005, 0007–0009, 0011, 0013, 0014 · Audience: core team (2 developers)
 
 ---
 
@@ -23,6 +23,7 @@
 14. [Licensing](#14-licensing)
 15. [Costs & funding](#15-costs--funding)
 16. [Open decisions (ADR backlog)](#16-open-decisions-adr-backlog)
+17. [Implementation status (for AI agents and new contributors)](#17-implementation-status-for-ai-agents-and-new-contributors)
 
 ---
 
@@ -239,7 +240,7 @@ Don't write a routing engine in Rust — run a proven one as a container behind 
 | OpenAPI | `utoipa` (spec generated from code → Swift client generated from spec) |
 | Auth | `argon2`, `jsonwebtoken` (EdDSA), later `webauthn-rs` for passkeys |
 | Events | `async-nats` (JetStream) |
-| Storage | `object_store` or `aws-sdk-s3` (works with R2/MinIO) |
+| Storage | `object_store` or `aws-sdk-s3` (S3 API: Cloudflare R2/AWS S3 in production, RustFS locally) |
 | Telemetry | `tracing` + `tracing-opentelemetry` |
 | Config | `figment` or `config` + env vars; secrets via files/env injected at deploy |
 | Testing | `testcontainers` (real Postgres in integration tests), `insta` snapshots |
@@ -308,7 +309,7 @@ What you do **not** need at the start: MongoDB, a dedicated time-series DB, Elas
 | Store | Purpose |
 |---|---|
 | **PostgreSQL 17 + PostGIS** | Users, tracks (metadata + simplified geometry), tours, POIs, social graph |
-| **Object storage** (R2/S3/MinIO) | Full-resolution tracks (gzip), GPX exports, photos, PMTiles map files |
+| **Object storage**: S3 API (Cloudflare R2/S3 in production; **RustFS** in the local stack, since MinIO is discontinued) | Full-resolution tracks (gzip), GPX exports, photos |
 | **Valkey** (Redis fork, BSD) | Rate limits, short-lived caches, live-location pub/sub |
 | **NATS JetStream** | Durable event stream between services |
 
@@ -451,8 +452,8 @@ Location traces are personal data and can reveal home, work, health and habits. 
 
 | Stage | Users | Setup | Orchestration |
 |---|---|---|---|
-| **0 – Dev** | you two | Docker Compose on laptops (Postgres, NATS, Valkey, MinIO, services) | Compose |
-| **1 – Beta** | < 1k | **One VM** (e.g. Oracle Cloud Always Free ARM 4 vCPU/24 GB, or Hetzner CAX ~€4–8/month) running Docker Compose + Traefik; tiles on R2 + Cloudflare CDN | Compose + `restart: unless-stopped`, health checks, nightly off-site backups |
+| **0 – Dev** | you two | Docker Compose on laptops: Postgres 18 + PostGIS, Kratos, NATS, Valkey, RustFS, Mailpit, services (`aret-backend/compose.yaml`) | Compose (Colima on macOS) |
+| **1 – Beta** | < 1k | **One VM** (e.g. Oracle Cloud Always Free ARM 4 vCPU/24 GB, or Hetzner CAX ~€4–8/month) running Docker Compose + Traefik; tiles on Cloudflare Pages (ADR-0005) | Compose + `restart: unless-stopped`, health checks, nightly off-site backups |
 | **2 – Growth** | 1k–50k | 3 small nodes, **k3s** (lightweight Kubernetes); Postgres via **CloudNativePG** (primary + 1–2 streaming replicas, automatic failover); services with 2+ replicas | k3s + Helm/Kustomize, GitOps with Argo CD or Flux |
 | **3 – Scale** | 50k+ | Managed Kubernetes or more nodes, multi-AZ, read replicas per region | Kubernetes, HPA autoscaling |
 
@@ -570,7 +571,8 @@ One **organization-level GitHub Project** ("Aret Roadmap") collects issues from 
 |---|---|---|
 | Apple Developer Program | **$99 / year (unavoidable)** | $99 / year |
 | Compute | €0 (Oracle Always Free) – €8/month (Hetzner ARM) | €30–80/month (3 nodes) |
-| Object storage + CDN (tiles, tracks) | €0 (Cloudflare R2 free tier ~10 GB, no egress fees) | €5–30/month |
+| Tiles (CDN) | €0: Cloudflare Pages, no card (ADR-0005) | €0 while under Pages limits; R2 + Worker beyond |
+| Object storage (tracks, photos) | €0: not needed until sync (Phase 1); R2's free tier needs a card on file | €5–30/month |
 | Postgres | on the VM (or Supabase/Neon free tier, both support PostGIS) | CloudNativePG on cluster |
 | Container registry, CI | €0 (GHCR + Actions, public repos) | €0 |
 | Monitoring | €0 (Grafana Cloud free) | self-hosted |
@@ -610,3 +612,38 @@ One **organization-level GitHub Project** ("Aret Roadmap") collects issues from 
 3. Audit the existing iOS prototype against §4 (persistence, map SDK, module structure).
 4. Build the first PMTiles region and render it in the prototype with MapLibre — the riskiest, most visible piece; do it first.
 5. Backend skeleton: Kratos + `identity` adapter + `tracks` with Compose, OpenAPI → Swift client generation end-to-end.
+
+---
+
+## 17. Implementation status (for AI agents and new contributors)
+
+*Last updated 2026-11-15. Read this before changing code: it records what exists, where, and the
+pitfalls already solved. Keep it current when you change any of it.*
+
+### Where things are
+| Repo | State | Key facts |
+|---|---|---|
+| `aret-ios` | Prototype imported (aret-app/aret-ios#3) | SwiftUI, iOS 18 / watchOS 11, Swift 6, XcodeGen (`project.yml`), MapLibre + MapKit fallback, Apple Watch app, Live Activity. Storage still JSON + GPX files (GRDB migration: aret-app/aret-ios#6). Known P0 bugs: aret-app/aret-ios#4 (track lost if killed mid-recording), aret-app/aret-ios#5 (`FileProtectionType.complete` blocks saving while locked). Pilot area boxes in `ARET-iOS/Routes/ARETDiscoveryRegion.swift`. |
+| `aret-backend` | Workspace + local stack | Cargo workspace, Rust **1.100.0** pinned. Crates `aret-common` (config from env, RFC 9457 errors, logging, `/health`, graceful shutdown) and `aret-auth` (`AuthenticatedUser` extractor; **rejects every token** until Kratos JWT verification, aret-app/aret-backend#3). Services `aret-identity` (8081) and `aret-tracks` (8082). Dockerfile: static musl binary on `distroless/static-debian12:nonroot` (~9 MB). `compose.yaml`: full local stack. |
+| `aret-maps` | Pilot tiles live | Planetiler 0.10.2, OpenMapTiles schema, bbox `9.29,43.79,11.38,44.80`, z0–14 (8,430 tiles). Served at `https://aret-tiles.pages.dev/tiles/{z}/{x}/{y}.pbf`; `metadata.json` alongside. Scripts: `scripts/build-pilot.sh`, `scripts/deploy-pages.sh` (Wrangler 4.162.0 pinned). |
+| `aret-infra` | Empty | CI workflows (aret-app/aret-infra#1) are next. |
+| `aret-docs` | This spec + ADRs | `docs/adr/` holds accepted decisions; open ones are issues. |
+
+### Conventions
+- **Rust:** [Google Rust style guide](https://google.github.io/styleguide/rustguide.html) (general rules, not Chrome/Fuchsia-only). Enforced by `rustfmt.toml`, `clippy.toml` and workspace lints (`missing_docs`, `clippy::unwrap_used`, `unsafe_code = forbid`). Before a PR: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo deny check`.
+- **Git:** one issue → one branch → one PR; `main` is protected (PR + 1 approval); **squash merge** (except history imports); commits signed off (`git commit -s`, DCO); PR body says `Closes #n` (same repo) or `Closes aret-app/<repo>#n`.
+- **Tracking:** org board "Aret Roadmap" (project 1) with Status, Priority, Area, Size, Phase, Sprint; move cards as work progresses.
+- **Secrets:** never in git. Local secrets in git-ignored `.env` (backend: generated by `scripts/dev-env.sh`); commit only `.env.example`. `.wrangler/` is ignored.
+- **Attribution:** maps must show "© OpenMapTiles © OpenStreetMap contributors".
+
+### Pitfalls already solved (don't rediscover them)
+| Problem | Solution |
+|---|---|
+| `postgis/postgis` images are amd64-only (fail on Apple Silicon / ARM servers) | `aret-backend/dev/postgres/Dockerfile`: official `postgres:18-trixie` + PGDG `postgresql-18-postgis-3` (PostGIS 3.7.0) |
+| MinIO open source discontinued (repo archived April 2026, no images) | **RustFS** 1.0.5 in the local stack; console at `http://127.0.0.1:9001/rustfs/console/` |
+| Ory Kratos versions jumped from v1.3.1 to **v25/v26** (calendar versioning) | Use `oryd/kratos:v26.2.0`; set `version:` in `kratos.yml` to match. List-valued settings from env use JSON strings: `SECRETS_COOKIE='["..."]'` |
+| Homebrew `planetiler` fails with "Improperly specified VM option" when `JAVA_HOME` points to an old Java | Run it as `env -u JAVA_HOME planetiler`; `build-pilot.sh` does this |
+| Cloudflare Pages: 20,000 files / 25 MB per file; `_headers` applies **every** matching rule | z14 max for the pilot (z15 would exceed); tile rule uses `/tiles/:z/:x/:y` so it doesn't also match `metadata.json` |
+| Clippy `double_must_use` | Don't put `#[must_use]` on functions returning an already-`#[must_use]` type (e.g. axum `Router`) |
+| Docker on macOS | Colima + Homebrew `docker`, `docker-buildx`, `docker-compose`; `~/.docker/config.json` needs `cliPluginsExtraDirs: ["/opt/homebrew/lib/docker/cli-plugins"]` |
+
