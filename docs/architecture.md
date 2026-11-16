@@ -504,7 +504,7 @@ Create a GitHub organization (e.g. `aret-app` — check availability), both of y
 |---|---|---|
 | `.github` | Org profile README, default `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, **issue forms** and PR template inherited by all repos, `FUNDING.yml` | CC-BY-4.0 / MIT |
 | `aret-ios` | Xcode project, local Swift packages (§4.2), fastlane | MPL-2.0 |
-| `aret-backend` | Cargo workspace: `services/*`, `crates/*` (shared), migrations, OpenAPI | AGPL-3.0 |
+| `aret-backend` | Workspace, local stack, test console, login check | Cargo workspace, Rust **1.100.0** pinned. `aret-common` (config from env, RFC 9457 errors, logging, `/health`, graceful shutdown); `aret-auth` (`JwtVerifier` + `AuthenticatedUser`: verifies Kratos **session JWTs**, ES256, audience `aret-api`, issuer = Kratos public URL; aret-app/aret-backend#14). Services `aret-identity` (8081) and `aret-tracks` (8082, `GET /v1/tracks` requires a JWT). `compose.yaml`: full local stack + **gateway** (Caddy) at `http://127.0.0.1:8080` serving the **test console** (`dev/webapp/`: Kratos browser flows, Get JWT, API calls, map) and proxying `/kratos`, `/api/identity`, `/api/tracks`. `scripts/dev-env.sh` creates `.env` and the JWT key pair in git-ignored `dev/secrets/`. CI required on `main`. Next: aret-app/aret-backend#4 (tracks with PostGIS), #12 (user.created), #13 (account deletion). |
 | `aret-maps` | Planetiler profile, MapLibre styles, sprites/glyphs, DEM scripts, Valhalla config, build workflows | BSD-3 / data under ODbL |
 | `aret-infra` | Docker Compose, k3s manifests/Helm, Traefik config, SOPS secrets, Terraform/OpenTofu, runbooks | AGPL-3.0 or MIT |
 | `aret-docs` | This spec, ADRs (`docs/adr/0001-…md`), privacy policy, GDPR records, user docs site | CC-BY-4.0 |
@@ -617,7 +617,7 @@ One **organization-level GitHub Project** ("Aret Roadmap") collects issues from 
 
 ## 17. Implementation status (for AI agents and new contributors)
 
-*Last updated 2026-11-15. Read this before changing code: it records what exists, where, and the
+*Last updated 2026-11-17. Read this before changing code: it records what exists, where, and the
 pitfalls already solved. Keep it current when you change any of it.*
 
 ### Where things are
@@ -645,6 +645,10 @@ pitfalls already solved. Keep it current when you change any of it.*
 | Homebrew `planetiler` fails with "Improperly specified VM option" when `JAVA_HOME` points to an old Java | Run it as `env -u JAVA_HOME planetiler`; `build-pilot.sh` does this |
 | Cloudflare Pages: 20,000 files / 25 MB per file; `_headers` applies **every** matching rule | z14 max for the pilot (z15 would exceed); tile rule uses `/tiles/:z/:x/:y` so it doesn't also match `metadata.json` |
 | Clippy `double_must_use` | Don't put `#[must_use]` on functions returning an already-`#[must_use]` type (e.g. axum `Router`) |
+| Kratos session → JWT | Tokenizer template under `session.whoami.tokenizer.templates` (works in open-source v26.2.0). The JWK needs `alg` and `kid` (Kratos copies them into the token); a claims mapper must return `{ claims: {...} }` (merged into the defaults). Request `whoami?tokenize_as=<template>` → field `tokenized`. |
+| Browser login cookies across ports | Kratos browser flows from another origin (e.g. VS Code Live Server on `:5500`) need CORS with credentials on the gateway, and **`127.0.0.1` on both sides**: `localhost` vs `127.0.0.1` are different sites, so the cookies are dropped. |
+| MapLibre GL JS 6 | ESM only (`dist/maplibre-gl.mjs`, named exports `Map`, `NavigationControl`, …); there's no `maplibre-gl.js` script file any more. |
+| `p256` 0.13 → RUSTSEC-2026-0387 | Pulls vulnerable `crypto-bigint` 0.5.5. Use `p256` 0.14 (same as `jsonwebtoken` 12): keys via `elliptic_curve::Generate::try_generate()`, no `jwk` feature (build the JWK from `to_sec1_bytes()`). |
 | Docker on macOS | Colima + Homebrew `docker`, `docker-buildx`, `docker-compose`; `~/.docker/config.json` needs `cliPluginsExtraDirs: ["/opt/homebrew/lib/docker/cli-plugins"]` |
 | aret-ios history | The prototype import (aret-app/aret-ios#3) was squash-merged; the full 232-commit history is kept by the tag `prototype-history`. Integration branch is **`main`**; `feature/field-test-0.1` (the old repo's base) has fixes not yet in `main` (aret-app/aret-ios#4, #5). |
 
