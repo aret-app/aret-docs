@@ -1,6 +1,6 @@
 # ADR-0015: Pre-built hiking routes from open data
 
-- **Status:** Proposed (merging the pull request accepts it)
+- **Status:** Accepted
 - **Date:** 2026-11-26
 - **Deciders:** @balditommaso, @lorenzopieri99
 - **Tracking:** aret-app/aret-docs#22 · implementation aret-app/aret-maps#4
