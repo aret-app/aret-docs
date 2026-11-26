@@ -617,6 +617,8 @@ One **organization-level GitHub Project** ("Aret Roadmap") collects issues from 
 | 0013 | Minimum iOS version | iOS 18 / watchOS 11 (as in the prototype) | **Accepted** |
 | 0014 | First map region | Alpi Apuane + Appennino tosco-emiliano | **Accepted** |
 | 0015 | Pre-built hiking routes | OSM hiking route relations (CAI trails, ODbL) first; regional open data after licence check; CAI/park files only with permission; never copy proprietary apps | **Accepted** |
+| 0016 | Shared tracks only on the server | Server stores only community-shared tracks; private tracks stay on the device (aret-app/aret-docs#25) | Proposed |
+| 0017 | Route and place search | Own OSM-derived copy (routes, places, DEM) rebuilt weekly, served by places-svc; never call Overpass/Nominatim/CAI per request (aret-app/aret-docs#27) | Proposed |
 
 ### Immediate next steps
 1. Review this document together; turn each row above into an ADR (accept / change).
