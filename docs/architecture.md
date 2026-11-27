@@ -619,6 +619,7 @@ One **organization-level GitHub Project** ("Aret Roadmap") collects issues from 
 | 0015 | Pre-built hiking routes | OSM hiking route relations (CAI trails, ODbL) first; regional open data after licence check; CAI/park files only with permission; never copy proprietary apps | **Accepted** |
 | 0016 | Shared tracks only on the server | Server stores only community-shared tracks; private tracks stay on the device (aret-app/aret-docs#25) | Proposed |
 | 0017 | Route and place search | Own OSM-derived copy (routes, places, DEM) rebuilt weekly, served by places-svc; never call Overpass/Nominatim/CAI per request (aret-app/aret-docs#27) | Proposed |
+| 0018 | Weather radar and rain along the route | Free sources (Protezione Civile radar or RainViewer; Open-Meteo forecast) fetched by a backend weather-svc on a schedule; rain warning from route times × the hiker's pace; never "you'll stay dry" (aret-app/aret-docs#31) | Proposed |
 
 ### Immediate next steps
 1. Review this document together; turn each row above into an ADR (accept / change).
